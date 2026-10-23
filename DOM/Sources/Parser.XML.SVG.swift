@@ -61,6 +61,7 @@ package extension XMLParser {
         svg.y = try att.parseCoordinate("y")
         svg.childElements = try parseGraphicsElements(e.children)
         svg.viewBox = viewBox
+        svg.preserveAspectRatio = try parsePreserveAspectRatio(try att.parseString("preserveAspectRatio"))
 
         svg.defs = try parseSVGDefs(e)
         svg.styles = parseStyleSheetElements(within: e)
@@ -84,6 +85,28 @@ package extension XMLParser {
         }
 
         return DOM.SVG.ViewBox(x: x, y: y, width: width, height: height)
+    }
+
+    func parsePreserveAspectRatio(_ data: String?) throws -> DOM.SVG.PreserveAspectRatio? {
+        guard let data else { return nil }
+        var components = data.split(whereSeparator: \.isWhitespace)
+        if components.first == "defer" {
+            components.removeFirst()
+        }
+        guard (1...2).contains(components.count),
+              let alignment = DOM.SVG.PreserveAspectRatio.Alignment(rawValue: String(components[0])) else {
+            throw Error.invalidAttribute(name: "preserveAspectRatio", value: data)
+        }
+        let scale: DOM.SVG.PreserveAspectRatio.Scale
+        if components.count == 2 {
+            guard let value = DOM.SVG.PreserveAspectRatio.Scale(rawValue: String(components[1])) else {
+                throw Error.invalidAttribute(name: "preserveAspectRatio", value: data)
+            }
+            scale = value
+        } else {
+            scale = .meet
+        }
+        return DOM.SVG.PreserveAspectRatio(alignment: alignment, scale: scale)
     }
 
     // Returns nil when raw is missing, or when a percent value has no viewport to resolve against

@@ -36,6 +36,7 @@ package extension DOM {
         package var width: Length
         package var height: Length
         package var viewBox: ViewBox?
+        package var preserveAspectRatio: PreserveAspectRatio?
 
         package var childElements = [GraphicsElement]()
 
@@ -63,6 +64,27 @@ package extension DOM {
             }
         }
         
+        package struct PreserveAspectRatio: Equatable {
+            package var alignment: Alignment
+            package var scale: Scale
+
+            package init(alignment: Alignment, scale: Scale) {
+                self.alignment = alignment
+                self.scale = scale
+            }
+
+            package enum Alignment: String {
+                case none
+                case xMinYMin, xMidYMin, xMaxYMin
+                case xMinYMid, xMidYMid, xMaxYMid
+                case xMinYMax, xMidYMax, xMaxYMax
+            }
+
+            package enum Scale: String {
+                case meet, slice
+            }
+        }
+
         package struct Defs {
             package var clipPaths = [ClipPath]()
             package var linearGradients = [LinearGradient]()

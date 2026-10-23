@@ -61,6 +61,7 @@ package extension DOM {
         package var clipPath: DOM.URL?
         package var clipRule: DOM.FillRule?
         package var mask: DOM.URL?
+        package var maskType: DOM.MaskType?
         package var filter: DOM.URL?
     }
     
@@ -140,6 +141,7 @@ extension DOM.PresentationAttributes {
         merged.clipPath = att.clipPath ?? clipPath
         merged.clipRule = att.clipRule ?? clipRule
         merged.mask = att.mask ?? mask
+        merged.maskType = att.maskType ?? maskType
         merged.filter = att.filter ?? filter
         
         return merged
@@ -174,6 +176,8 @@ extension DOM.GraphicsElement {
             return "a"
         case is DOM.SVG:
             return "svg"
+        case is DOM.Mask:
+            return "mask"
         default:
             return nil
         }

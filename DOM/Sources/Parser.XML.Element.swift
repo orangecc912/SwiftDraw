@@ -264,6 +264,7 @@ extension XMLParser {
         el.clipPath = try att.parseUrlSelector("clip-path")
         el.clipRule = try att.parseRaw("clip-rule")
         el.mask = try att.parseUrlSelector("mask")
+        el.maskType = try att.parseRaw("mask-type")
         el.filter = try att.parseUrlSelector("filter")
 
         return el
@@ -336,6 +337,7 @@ extension DOM.PresentationAttributes {
         clipPath = attributes.clipPath
         clipRule = attributes.clipRule
         mask = attributes.mask
+        maskType = attributes.maskType
         filter = attributes.filter
     }
 }

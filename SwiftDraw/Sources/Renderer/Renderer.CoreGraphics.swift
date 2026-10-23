@@ -325,11 +325,16 @@ struct CGRenderer: Renderer {
     typealias Types = CGTypes
 
     let ctx: CGContext
-    let baseCTM: CGAffineTransform
+    private let patternBaseCTM: CGAffineTransform
 
     init(context: CGContext) {
         self.ctx = context
-        self.baseCTM = ctx.ctm
+#if canImport(UIKit)
+        // UIKit establishes pattern space when it creates the current graphics context.
+        self.patternBaseCTM = UIGraphicsGetCurrentContext() === context ? context.ctm : .identity
+#else
+        self.patternBaseCTM = .identity
+#endif
     }
 
     func pushState() {
@@ -374,7 +379,7 @@ struct CGRenderer: Renderer {
         var alpha : CGFloat = 1.0
 
         let cgPattern = CGPattern.make(bounds: pattern.bounds,
-                                       matrix: ctx.ctm.concatenating(baseCTM.inverted()),
+                                       matrix: ctx.ctm.concatenating(patternBaseCTM.inverted()),
                                        step: pattern.bounds.size,
                                        tiling: .constantSpacingMinimalDistortion,
                                        isColored: true,

@@ -55,6 +55,9 @@ extension XML.Formatter {
             element.attributes["xmlns"] = "http://www.w3.org/2000/svg"
             element.attributes["xmlns:xlink"] = "http://www.w3.org/1999/xlink"
             element.attributes["viewBox"] = makeViewBox(svg.viewBox)
+            if let aspectRatio = svg.preserveAspectRatio {
+                element.attributes["preserveAspectRatio"] = "\(aspectRatio.alignment.rawValue) \(aspectRatio.scale.rawValue)"
+            }
 
             if svg.viewBox != .init(x: 0, y: 0, width: DOM.Coordinate(svg.width), height: DOM.Coordinate(svg.height)) {
                 element.attributes["width"] = formatter.formatLength(svg.width)
@@ -139,6 +142,7 @@ extension XML.Formatter {
 
             attributes["clip-path"] = graphic.clipPath.map(encodeURL)
             attributes["mask"] = graphic.mask.map(encodeURL)
+            attributes["mask-type"] = graphic.maskType?.rawValue
             attributes["transform"] = graphic.transform?
                                                     .map(encodeTransform)
                                                     .joined(separator: " ")

@@ -72,6 +72,11 @@ extension DOM {
         case evenodd
     }
     
+    package enum MaskType: String {
+        case luminance
+        case alpha
+    }
+
     package enum DisplayMode: String {
         case none
         case inline

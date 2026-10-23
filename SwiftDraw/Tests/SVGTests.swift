@@ -33,6 +33,10 @@ import SwiftDrawDOM
 @testable import SwiftDraw
 import Testing
 
+#if canImport(CoreGraphics)
+import CoreGraphics
+#endif
+
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -74,6 +78,226 @@ struct SVGTests {
         #expect(pxSVG?.size == CGSize(width: 2, height: 1))
     }
 
+    @Test(arguments: ["objectBoundingBox", "userSpaceOnUse"], ["objectBoundingBox", "userSpaceOnUse"])
+    func patternUnitsAndContentUnitsAreIndependent(patternUnits: String, contentUnits: String) throws {
+        let tileWidth = patternUnits == "objectBoundingBox" ? "0.5" : "20"
+        let tileHeight = patternUnits == "objectBoundingBox" ? "1" : "20"
+        let contentWidth = contentUnits == "objectBoundingBox" ? "0.25" : "10"
+        let contentHeight = contentUnits == "objectBoundingBox" ? "1" : "20"
+        let pixels = try RasterizedSVG(xml: """
+        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">
+            <defs>
+                <pattern id="p" width="\(tileWidth)" height="\(tileHeight)"
+                         patternUnits="\(patternUnits)" patternContentUnits="\(contentUnits)">
+                    <rect width="\(contentWidth)" height="\(contentHeight)" fill="red"/>
+                </pattern>
+            </defs>
+            <rect width="40" height="20" fill="url(#p)"/>
+        </svg>
+        """)
+
+        #expect(pixels.pixel(x: 5, y: 10) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 15, y: 10) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 25, y: 10) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 35, y: 10) == [0, 0, 0, 0])
+    }
+
+    @Test
+    func patternDefaultsUseBoundingBoxTilesAndUserSpaceContents() throws {
+        let pixels = try RasterizedSVG(xml: """
+        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="20">
+            <defs>
+                <pattern id="p" width="0.5" height="1">
+                    <rect width="10" height="20" fill="red"/>
+                </pattern>
+            </defs>
+            <rect width="40" height="20" fill="url(#p)"/>
+        </svg>
+        """)
+
+        #expect(pixels.pixel(x: 5, y: 10) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 15, y: 10) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 25, y: 10) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 35, y: 10) == [0, 0, 0, 0])
+    }
+
+    @Test(arguments: [1, 2, 3])
+    func patternBoundingBoxContentsUseShapeOriginAndDimensions(scale: Int) throws {
+        let pixels = try RasterizedSVG(xml: """
+        <svg xmlns="http://www.w3.org/2000/svg" width="60" height="40">
+            <defs>
+                <pattern id="p" width="1" height="1" patternContentUnits="objectBoundingBox">
+                    <rect width="0.5" height="0.5" fill="red"/>
+                </pattern>
+            </defs>
+            <rect x="10" y="10" width="40" height="20" fill="url(#p)"/>
+        </svg>
+        """, scale: scale)
+
+        #expect(pixels.pixel(x: 25, y: 15) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 40, y: 15) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 25, y: 25) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 5, y: 15) == [0, 0, 0, 0])
+    }
+
+    @Test(arguments: ["objectBoundingBox", "userSpaceOnUse"])
+    func patternTileOriginOffsetsUserSpaceContents(patternUnits: String) throws {
+        let usesBoundingBox = patternUnits == "objectBoundingBox"
+        let tileX = usesBoundingBox ? "0.125" : "5"
+        let tileY = usesBoundingBox ? "0.15" : "3"
+        let tileWidth = usesBoundingBox ? "0.5" : "20"
+        let tileHeight = usesBoundingBox ? "1" : "20"
+        let shapeWidth = usesBoundingBox ? "40" : "60"
+        let shapeHeight = usesBoundingBox ? "20" : "40"
+        let pixels = try RasterizedSVG(xml: """
+        <svg xmlns="http://www.w3.org/2000/svg" width="80" height="60">
+            <defs>
+                <pattern id="p" x="\(tileX)" y="\(tileY)" width="\(tileWidth)" height="\(tileHeight)"
+                         patternUnits="\(patternUnits)">
+                    <rect width="10" height="10" fill="red"/>
+                </pattern>
+            </defs>
+            <rect width="\(shapeWidth)" height="\(shapeHeight)" fill="url(#p)"/>
+        </svg>
+        """)
+
+        #expect(pixels.pixel(x: 7, y: 5) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 12, y: 5) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 27, y: 5) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 2, y: 5) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 17, y: 5) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 22, y: 5) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 7, y: 1) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 7, y: 15) == [0, 0, 0, 0])
+    }
+
+    @Test(arguments: [false, true])
+    func patternUserSpaceTilesKeepBoundingBoxContentOrigin(hasTileOffset: Bool) throws {
+        let tileX = hasTileOffset ? "5" : "0"
+        let tileY = hasTileOffset ? "3" : "0"
+        let pixels = try RasterizedSVG(xml: """
+        <svg xmlns="http://www.w3.org/2000/svg" width="60" height="40">
+            <defs>
+                <pattern id="p" x="\(tileX)" y="\(tileY)" width="20" height="20"
+                         patternUnits="userSpaceOnUse" patternContentUnits="objectBoundingBox">
+                    <rect width="0.25" height="0.5" fill="red"/>
+                </pattern>
+            </defs>
+            <rect x="10" y="10" width="40" height="20" fill="url(#p)"/>
+        </svg>
+        """)
+        let redPixels = hasTileOffset ? [(12, 11), (27, 11), (12, 25), (27, 25)] : [(25, 25), (45, 25)]
+        let clearPixels = hasTileOffset ? [(17, 11), (27, 15), (27, 21)] : [(15, 15), (25, 15), (15, 25)]
+
+        for (x, y) in redPixels {
+            #expect(pixels.pixel(x: x, y: y) == [255, 0, 0, 255])
+        }
+        for (x, y) in clearPixels {
+            #expect(pixels.pixel(x: x, y: y) == [0, 0, 0, 0])
+        }
+    }
+
+    @Test
+    func patternCanBeReusedForShapesWithDifferentBounds() throws {
+        let pixels = try RasterizedSVG(xml: """
+        <svg xmlns="http://www.w3.org/2000/svg" width="100" height="60">
+            <defs>
+                <pattern id="p" width="1" height="1" patternContentUnits="objectBoundingBox">
+                    <rect width="0.5" height="0.5" fill="red"/>
+                </pattern>
+            </defs>
+            <rect x="10" y="10" width="20" height="20" fill="url(#p)"/>
+            <rect x="50" y="10" width="40" height="40" fill="url(#p)"/>
+        </svg>
+        """)
+
+        #expect(pixels.pixel(x: 15, y: 15) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 25, y: 15) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 15, y: 25) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 65, y: 25) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 75, y: 25) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 65, y: 45) == [0, 0, 0, 0])
+    }
+
+    @Test(arguments: [
+        ("", false),
+        (#"mask-type="luminance""#, false),
+        (#"mask-type="alpha""#, true),
+        (#"style="mask-type:alpha""#, true),
+        (#"mask-type="luminance" style="mask-type:alpha""#, true)
+    ])
+    func maskTypeControlsOpacity(attributes: String, isAlpha: Bool) throws {
+        let pixels = try RasterizedSVG(xml: """
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+            <mask id="m" \(attributes)>
+                <rect width="20" height="20" fill="black"/>
+            </mask>
+            <rect width="20" height="20" fill="#24344B" mask="url(#m)"/>
+        </svg>
+        """)
+        #expect(pixels.pixel(x: 10, y: 10) == (isAlpha ? [36, 52, 75, 255] : [0, 0, 0, 0]))
+    }
+
+    @Test
+    func maskTypeUsesStylesheet() throws {
+        let pixels = try RasterizedSVG(xml: """
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20">
+            <style>mask { mask-type: alpha; }</style>
+            <mask id="m" mask-type="luminance">
+                <rect width="20" height="20" fill="black"/>
+            </mask>
+            <rect width="20" height="20" fill="#24344B" mask="url(#m)"/>
+        </svg>
+        """)
+        #expect(pixels.pixel(x: 10, y: 10) == [36, 52, 75, 255])
+    }
+
+    @Test(arguments: ["", "none", "xMaxYMin meet"])
+    func viewBoxPreservesAspectRatioAndAlignment(mode: String) throws {
+        let attribute = mode.isEmpty ? "" : "preserveAspectRatio=\"\(mode)\""
+        let pixels = try RasterizedSVG(xml: """
+        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="20"
+             viewBox="10 20 20 20" \(attribute)>
+            <rect x="10" y="20" width="20" height="20" fill="red"/>
+        </svg>
+        """)
+        #expect(pixels.pixel(x: 5, y: 10) == (mode == "none" ? [255, 0, 0, 255] : [0, 0, 0, 0]))
+        #expect(pixels.pixel(x: 15, y: 10) == (mode == "xMaxYMin meet" ? [0, 0, 0, 0] : [255, 0, 0, 255]))
+        #expect(pixels.pixel(x: 25, y: 10) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 35, y: 10) == (mode.isEmpty ? [0, 0, 0, 0] : [255, 0, 0, 255]))
+    }
+
+    @Test
+    func viewBoxAlignsVertically() throws {
+        let pixels = try RasterizedSVG(xml: """
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="40"
+             viewBox="0 0 20 20" preserveAspectRatio="xMinYMax meet">
+            <rect width="20" height="20" fill="red"/>
+        </svg>
+        """)
+        #expect(pixels.pixel(x: 10, y: 5) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 10, y: 25) == [255, 0, 0, 255])
+    }
+
+    @Test(arguments: ["xMidYMid meet", "xMidYMid slice"])
+    func nestedViewBoxClipsToViewport(mode: String) throws {
+        let pixels = try RasterizedSVG(xml: """
+        <svg xmlns="http://www.w3.org/2000/svg" width="60" height="40">
+            <svg x="10" y="10" width="40" height="20" viewBox="0 0 20 20"
+                 preserveAspectRatio="\(mode)">
+                <rect x="-10" width="40" height="20" fill="red"/>
+            </svg>
+        </svg>
+        """)
+        #expect(pixels.pixel(x: 30, y: 5) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 30, y: 35) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 5, y: 15) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 55, y: 15) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 15, y: 15) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 45, y: 15) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 30, y: 25) == [255, 0, 0, 255])
+    }
+
     @Test
     func imageRasterizes() {
         let image = SVG.makeLines()
@@ -105,6 +329,37 @@ struct SVGTests {
     }
 
 #if canImport(UIKit)
+    @Test(arguments: [1, 2, 3])
+    func patternRasterizesWithUIKitAtImageScale(scale: Int) throws {
+        let reference = try #require(SVG(data: Data("""
+        <svg xmlns="http://www.w3.org/2000/svg" width="60" height="40">
+            <rect x="10" y="10" width="20" height="10" fill="red"/>
+        </svg>
+        """.utf8)))
+        let referenceImage = reference.rasterize(size: reference.size, scale: CGFloat(scale))
+        let referencePixels = try RasterizedSVG(cgImage: #require(referenceImage.cgImage), scale: scale)
+        #expect(referencePixels.pixel(x: 25, y: 15) == [255, 0, 0, 255])
+        #expect(referencePixels.pixel(x: 40, y: 15) == [0, 0, 0, 0])
+        #expect(referencePixels.pixel(x: 25, y: 25) == [0, 0, 0, 0])
+
+        let svg = try #require(SVG(data: Data("""
+        <svg xmlns="http://www.w3.org/2000/svg" width="60" height="40">
+            <defs>
+                <pattern id="p" width="1" height="1" patternContentUnits="objectBoundingBox">
+                    <rect width="0.5" height="0.5" fill="red"/>
+                </pattern>
+            </defs>
+            <rect x="10" y="10" width="40" height="20" fill="url(#p)"/>
+        </svg>
+        """.utf8)))
+        let image = svg.rasterize(size: svg.size, scale: CGFloat(scale))
+        let pixels = try RasterizedSVG(cgImage: #require(image.cgImage), scale: scale)
+        #expect(image.scale == CGFloat(scale))
+        #expect(pixels.pixel(x: 25, y: 15) == [255, 0, 0, 255])
+        #expect(pixels.pixel(x: 40, y: 15) == [0, 0, 0, 0])
+        #expect(pixels.pixel(x: 25, y: 25) == [0, 0, 0, 0])
+    }
+
     @Test
     func rasterize() {
         let svg = SVG(named: "gradient-apple.svg", in: .test)!
@@ -270,6 +525,56 @@ struct SVGTests {
     func defaultCostLimit() {
         let limit = SVGGCache.defaultTotalCostLimit
         #expect(limit > 0)
+    }
+}
+
+private struct RasterizedSVG {
+    private let data: Data
+    private let bytesPerRow: Int
+    private let scale: Int
+
+    init(xml: String, scale: Int = 1) throws {
+        let svg = try #require(SVG(data: Data(xml.utf8)))
+        let width = Int(svg.size.width) * scale
+        let height = Int(svg.size.height) * scale
+        let context = try Self.makeContext(width: width, height: height)
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: CGFloat(scale), y: -CGFloat(scale))
+        context.draw(svg)
+
+        let bytes = try #require(context.data)
+        self.bytesPerRow = context.bytesPerRow
+        self.data = Data(bytes: bytes, count: context.bytesPerRow * height)
+        self.scale = scale
+    }
+
+    init(cgImage: CGImage, scale: Int) throws {
+        let context = try Self.makeContext(width: cgImage.width, height: cgImage.height)
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: CGFloat(cgImage.width), height: CGFloat(cgImage.height)))
+
+        let bytes = try #require(context.data)
+        self.bytesPerRow = context.bytesPerRow
+        self.data = Data(bytes: bytes, count: context.bytesPerRow * cgImage.height)
+        self.scale = scale
+    }
+
+    func pixel(x: Int, y: Int) -> [UInt8] {
+        let offset = y * scale * bytesPerRow + x * scale * 4
+        return Array(data[offset..<(offset + 4)])
+    }
+
+    private static func makeContext(width: Int, height: Int) throws -> CGContext {
+        let context = try #require(CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue
+        ))
+        context.clear(CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
+        return context
     }
 }
 

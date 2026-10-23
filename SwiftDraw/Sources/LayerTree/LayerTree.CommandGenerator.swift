@@ -207,22 +207,35 @@ extension LayerTree {
                     commands.append(.fill(path, rule: rule))
                 }
             case .pattern(let fillPattern):
-                var resolvedPattern = fillPattern
-                if fillPattern.contentUnits == .objectBoundingBox {
-                    let bounds = provider.getBounds(from: shape)
-                    let scaledFrame = LayerTree.Rect(
+                let bounds = provider.getBounds(from: shape)
+                let frame: LayerTree.Rect
+                if fillPattern.units == .objectBoundingBox {
+                    frame = LayerTree.Rect(
                         x: fillPattern.frame.x * bounds.width + bounds.x,
                         y: fillPattern.frame.y * bounds.height + bounds.y,
                         width: fillPattern.frame.width * bounds.width,
                         height: fillPattern.frame.height * bounds.height
                     )
-                    resolvedPattern = LayerTree.Pattern(frame: scaledFrame)
-                    resolvedPattern.contents = fillPattern.contents
+                } else {
+                    frame = fillPattern.frame
                 }
-                var patternCommands = [RendererCommand<P.Types>]()
-                for contents in resolvedPattern.contents {
+                let resolvedPattern = LayerTree.Pattern(frame: frame, contentUnits: fillPattern.contentUnits)
+                resolvedPattern.units = .userSpaceOnUse
+                resolvedPattern.contents = fillPattern.contents
+
+                var patternCommands: [RendererCommand<P.Types>] = [.pushState]
+                patternCommands.append(contentsOf: renderCommands(forTransforms: [
+                    .translate(tx: frame.x, ty: frame.y)
+                ]))
+                if fillPattern.contentUnits == .objectBoundingBox {
+                    patternCommands.append(contentsOf: renderCommands(forTransforms: [
+                        .scale(sx: bounds.width, sy: bounds.height)
+                    ]))
+                }
+                for contents in fillPattern.contents {
                     patternCommands.append(contentsOf: renderCommands(for: contents, colorConverter: colorConverter))
                 }
+                patternCommands.append(.popState)
 
                 let pattern = provider.createPattern(from: resolvedPattern, contents: patternCommands)
                 let rule = provider.createFillRule(from: fill.rule)
@@ -439,8 +452,9 @@ extension LayerTree {
             commands.append(.pushTransparencyLayer)
             commands.append(.setBlend(mode: copy))
             //commands.append(contentsOf: renderCommands(forClip: layer.clip))
-            let drawMask = layer.contents.flatMap{
-                renderCommands(for: $0, colorConverter: .luminance)
+            let colorConverter: any ColorConverter = layer.maskType == .alpha ? .default : .luminance
+            let drawMask = layer.contents.flatMap {
+                renderCommands(for: $0, colorConverter: colorConverter)
             }
             commands.append(contentsOf: drawMask)
             commands.append(.popTransparencyLayer)

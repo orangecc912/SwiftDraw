@@ -39,6 +39,7 @@ extension LayerTree {
     final class Pattern: Hashable {
 
         var frame: LayerTree.Rect
+        var units: PatternUnits = .objectBoundingBox
         var contentUnits: PatternUnits
         var contents: [LayerTree.Layer.Contents]
 
@@ -50,12 +51,13 @@ extension LayerTree {
 
         func hash(into hasher: inout Hasher) {
             frame.hash(into: &hasher)
+            units.hash(into: &hasher)
             contentUnits.hash(into: &hasher)
             contents.hash(into: &hasher)
         }
 
         static func == (lhs: LayerTree.Pattern, rhs: LayerTree.Pattern) -> Bool {
-            return lhs.frame == rhs.frame && lhs.contentUnits == rhs.contentUnits && lhs.contents == rhs.contents
+            return lhs.frame == rhs.frame && lhs.units == rhs.units && lhs.contentUnits == rhs.contentUnits && lhs.contents == rhs.contents
         }
     }
 }

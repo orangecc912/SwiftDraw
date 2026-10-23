@@ -55,7 +55,8 @@ extension LayerTree {
                 y: svg.y,
                 viewBox: svg.viewBox,
                 width: svg.width,
-                height: svg.height
+                height: svg.height,
+                preserveAspectRatio: svg.preserveAspectRatio
             )
             return l
         }
@@ -65,13 +66,41 @@ extension LayerTree {
             y: DOM.Coordinate?,
             viewBox: DOM.SVG.ViewBox?,
             width: DOM.Length,
-            height: DOM.Length
+            height: DOM.Length,
+            preserveAspectRatio: DOM.SVG.PreserveAspectRatio? = nil
         ) -> [LayerTree.Transform] {
-            let position = LayerTree.Transform.translate(tx: x ?? 0, ty: y ?? 0)
             let viewBox = viewBox ?? DOM.SVG.ViewBox(x: 0, y: 0, width: .init(width), height: .init(height))
+            let aspectRatio = preserveAspectRatio ?? .init(alignment: .xMidYMid, scale: .meet)
+            var sx = LayerTree.Float(width) / viewBox.width
+            var sy = LayerTree.Float(height) / viewBox.height
+            var tx = x ?? 0
+            var ty = y ?? 0
 
-            let sx = LayerTree.Float(width) / viewBox.width
-            let sy = LayerTree.Float(height) / viewBox.height
+            if aspectRatio.alignment != .none {
+                let uniformScale = aspectRatio.scale == .slice ? max(sx, sy) : min(sx, sy)
+                sx = uniformScale
+                sy = uniformScale
+                let remainingWidth = LayerTree.Float(width) - viewBox.width * uniformScale
+                let remainingHeight = LayerTree.Float(height) - viewBox.height * uniformScale
+                switch aspectRatio.alignment {
+                case .xMidYMin, .xMidYMid, .xMidYMax:
+                    tx += remainingWidth / 2
+                case .xMaxYMin, .xMaxYMid, .xMaxYMax:
+                    tx += remainingWidth
+                default:
+                    break
+                }
+                switch aspectRatio.alignment {
+                case .xMinYMid, .xMidYMid, .xMaxYMid:
+                    ty += remainingHeight / 2
+                case .xMinYMax, .xMidYMax, .xMaxYMax:
+                    ty += remainingHeight
+                default:
+                    break
+                }
+            }
+
+            let position = LayerTree.Transform.translate(tx: tx, ty: ty)
             let scale = LayerTree.Transform.scale(sx: sx, sy: sy)
             let translate = LayerTree.Transform.translate(tx: -viewBox.x, ty: -viewBox.y)
 
@@ -112,16 +141,22 @@ extension LayerTree {
                     parent.appendContents(.layer(layer))
 
                     if let svg = currentElement as? DOM.SVG {
-                        let viewBox = svg.viewBox ?? DOM.SVG.ViewBox(x: 0, y: 0, width: .init(svg.width), height: .init(svg.height))
-                        let bounds = LayerTree.Rect(x: viewBox.x, y: viewBox.y, width: viewBox.width, height: viewBox.height)
-                        layer.clip = [ClipShape(shape: .rect(within: bounds, radii: .zero), transform: .identity)]
                         layer.transform = Builder.makeTransform(
                             x: svg.x,
                             y: svg.y,
                             viewBox: svg.viewBox,
                             width: svg.width,
-                            height: svg.height
+                            height: svg.height,
+                            preserveAspectRatio: svg.preserveAspectRatio
                         )
+                        let matrix = layer.transform.toMatrix()
+                        let bounds = LayerTree.Rect(
+                            x: ((svg.x ?? 0) - matrix.tx) / matrix.a,
+                            y: ((svg.y ?? 0) - matrix.ty) / matrix.d,
+                            width: LayerTree.Float(svg.width) / matrix.a,
+                            height: LayerTree.Float(svg.height) / matrix.d
+                        )
+                        layer.clip = [ClipShape(shape: .rect(within: bounds, radii: .zero), transform: .identity)]
                     }
                 } else {
                     // This must be the top-level root layer
@@ -200,6 +235,7 @@ extension LayerTree {
                   let mask = svg.defs.masks.first(where: { $0.id == maskId }) else { return nil }
 
             let l = Layer()
+            l.maskType = DOM.presentationAttributes(for: mask, styles: svg.styles).maskType ?? .luminance
 
             let maskState = createState(for: mask, inheriting: State())
             mask.childElements.forEach {
@@ -362,9 +398,10 @@ extension LayerTree.Builder {
     }
 
     func makePattern(for element: DOM.Pattern) -> LayerTree.Pattern {
-        let frame = LayerTree.Rect(x: 0, y: 0, width: element.width, height: element.height)
+        let frame = LayerTree.Rect(x: element.x ?? 0, y: element.y ?? 0, width: element.width, height: element.height)
         let contentUnits: LayerTree.PatternUnits = element.patternContentUnits == .objectBoundingBox ? .objectBoundingBox : .userSpaceOnUse
         let pattern = LayerTree.Pattern(frame: frame, contentUnits: contentUnits)
+        pattern.units = element.patternUnits == .userSpaceOnUse ? .userSpaceOnUse : .objectBoundingBox
         pattern.contents = element.childElements.compactMap { .layer(makeLayer(from: $0, inheriting: .init())) }
         return pattern
     }
